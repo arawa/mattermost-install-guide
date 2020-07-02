@@ -7,7 +7,6 @@ This guide aims to bring an installation as stable as possible with some comprom
 ## Installation
 
 First thing first, let's add the Extra Packages for Enterprise Linux repo:
-
 ```
 # yum -y install epel-release
 ```
@@ -19,16 +18,16 @@ Package epel-release-7-12.noarch already installed and latest version
 Nothing to do
 ```
 
-We will be using adding [a well maintained community maintained Mattermost repository](https://gitlab.com/harbottle/harbottle-main/-/tree/master/). The latter is not as hardened as the one provided on Arch Linux due to unmet dependency preriquisites. Just confirm the install process.
+We will be using adding [a well maintained community maintained Mattermost repository](https://gitlab.com/harbottle/harbottle-main/-/tree/master/). The latter is not as hardened as the one provided on Arch Linux due to unmet dependency preriquisites, but it is perfectly suitable for a production environment.
 
+Just confirm the install process:
 ```
 # yum -y install https://harbottle.gitlab.io/harbottle-main/7/x86_64/harbottle-main-release.rpm
 ```
 
 ## Database setup
 
-The MariaDB version provided with CentOS 7 (MariaDB 5.5) is a bit outdated. It seems it doesn't support full index on InnoDB, we had the following error message: "The used table type doesn't support FULLTEXT indexes". We switched to the upstream MariaDB version (10.x). [src.](https://mariadb.com/resources/blog/installing-mariadb-10-on-centos-7-rhel-7/)
-
+The MariaDB version provided with CentOS 7 (MariaDB 5.5) is a bit outdated. It seems it doesn't support full index on InnoDB, we had the following error message: "The used table type doesn't support FULLTEXT indexes". We [switched](https://mariadb.com/resources/blog/installing-mariadb-10-on-centos-7-rhel-7/) to the upstream MariaDB version (10.x).
 ```
 # curl -LOC - https://downloads.mariadb.com/MariaDB/mariadb_repo_setup
 # chmod +x mariadb_repo_setup
@@ -37,14 +36,12 @@ The MariaDB version provided with CentOS 7 (MariaDB 5.5) is a bit outdated. It s
 ```
 
 Start the MariaDB service to perform the initial secure installation of MariaDB. Just follow the on-screen instructions.
-
 ```
 # systemctl start mariadb.service
 # mysql_secure_installation
 ```
 
 Connect as root to the database, create the database, a dedicated user for Mattermost and grant privileges to it.
-
 ```
 $ mysql -u root -p
 ```
@@ -63,10 +60,9 @@ Ensure the MariaDB server is running at boot:
 
 ## Configuring Mattermost
 
-The Mattermost happens in the file `/etc/mattermost/config.json`.
+The Mattermost configuration happens in the file `/etc/mattermost/config.json`.
 
-Let's specify the correct DriverName and DataSource.
-
+Let's specify the correct `DriverName` and `DataSource` .
 ```
 [...]
 "SqlSettings": {
@@ -93,7 +89,7 @@ Start and enable the Mattermost service:
 # systemctl enable mattermost
 ```
 
-The service is by default listening in IPv6 only on all interfaces. This means configuring a firewall will be needed, otherwise, Mattermost will still be reachable on :8065. To ensure this is the case, we can check with `ss`:
+The service is by default listening on all interfaces only in IPv6. This means configuring a firewall will be needed, otherwise, Mattermost will still be reachable on :8065 to the public, something we don't want. To confirm the situation, we can check it with `ss`:
 ```
 $ ss -tuanp | grep LISTEN | grep 8065
 tcp    LISTEN     0      128    [::]:8065               [::]:*                   users:(("mattermost",pid=1115,fd=19))
@@ -113,13 +109,12 @@ Let's install nginx:
 # yum install nginx.x86_64
 ```
 
-Contrary to more recent versions, virtual hosts are configured in `/etc/nginx/conf.d/` and not using the apache2 inspired directory structure (`/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`), even if these can be created easily and sourced from `/etc/nginx/nginx.conf`. Right now, the location of these virtual hosts is defined by this statement:
+Contrary to more recent versions of CentOS, virtual hosts are configured in `/etc/nginx/conf.d/` and not using the apache2 inspired directory structure (`/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`). If needed, these folders can be created easily and sourced from `/etc/nginx/nginx.conf`. Right now, the location of these virtual hosts is defined by this statement:
 ```
 include /etc/nginx/conf.d/*.conf;
 ```
 
 Create a file `/etc/nginx/conf.d/mattermost.conf` with the following content:
-
 ```
 upstream backend {
    server [::1]:8065;
@@ -182,7 +177,7 @@ Start ant enable nginx:
 
 Please make sure you are aware of the [firewalld basic concepts](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-firewall-using-firewalld-on-centos-7#basic-concepts-in-firewalld) first.
 
-Check the zone which is currently defined and adapt the command after accordinyl:
+Check the zone which is currently defined and adapt the command hereafter accordingly:
 ```
 # firewall-cmd --get-default-zone
 public
@@ -211,8 +206,7 @@ In order to avoid rate limits, let's do a test first (materialized by the `--dry
 # certbot --nginx certonly --dry-run
 ```
 
-Cerbot should detect your subdomain automatically and ask you to specify an email address where to send reminders if the certificate will soon expire:
-
+Cerbot should detect your subdomain automatically and ask you to specify an email address where to send reminders in the event the certificate is expiring soon:
 ```
 Saving debug log to /var/log/letsencrypt/letsencrypt.log
 Plugins selected: Authenticator nginx, Installer nginx
@@ -225,7 +219,7 @@ Which names would you like to activate HTTPS for?
 Select the appropriate numbers separated by commas and/or spaces, or leave input
 blank to select all options shown (Enter 'c' to cancel):
 ```
-If everything works smoothly, repeat that step without the `--dry-run` parameter. If you receive an output similar to the following, this lean this is ok:
+If everything works smoothly, repeat that step without the `--dry-run` parameter. If you receive an output similar to the following, this means the certificate has been flawlessly issued:
 ```
 Renewing an existing certificate
 Performing the following challenges:
@@ -249,7 +243,6 @@ IMPORTANT NOTES:
 ```
 
 Replace the `mattermost.conf` nginx file as follow:
-
 ```
 upstream backend {
    server [::1]:8065;
@@ -341,9 +334,9 @@ If everything is okay, reload nginx:
 # systemctl reload nginx
 ```
 
-Check if Mattermost is reachable in https, if the `:8065` access is being denied.
+Check if Mattermost is reachable in https and ensure that the access via the port `:8065` is being denied.
 
-Check the https connection robustness on [SSL Labs](https://www.ssllabs.com/ssltest/). Don't forget to check the following checkbox on the webpage to avoid the website to be promoted to the recently checked section of ssl labs.
+Check the https connection robustness on [SSL Labs](https://www.ssllabs.com/ssltest/), but don't forget to check the following checkbox on the webpage to avoid the website to be promoted to the recently checked section of SSL Labs.
 ```
 [x] Do not show the results on the boards
 ```
@@ -354,8 +347,7 @@ Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-sec
 0 0,12 * * * python -c 'import random; import time; time.sleep(random.random() * 3600)' && certbot renew
 ```
 
-Note: The random is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid a I/O increase which could make the SSL renewal fail.
-
+Note: The random statement we defined in the cron is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid an I/O increase which could make the SSL renewal fail.
 
 ## Specific Mattermost configuration
 
