@@ -1,7 +1,5 @@
 # Mattermost at Arawa
 
-Strong of an XMPP chat experience, Arawa recently decided to choose a more advanced and full featured team chat solution. Several FOSS tools have been investigated, and the final decision has been to choose Mattermost as in-house chat tool.
-
 This repo gathers all the documentation and notes we took about during our journey with Mattermost.
 
 In this repo:
