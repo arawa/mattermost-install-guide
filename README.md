@@ -5,6 +5,7 @@ This repo gathers all the documentation and notes we took about during our journ
 In this repo:
 
 * [Installation guide of Mattermost on CentOS 7](mattermost-centos-7.md)
+* [Mattermost Arawa specific configuration](mattermost-custom-config.md)
 
 ## Open first company
 

@@ -349,13 +349,3 @@ Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-sec
 
 Note: The random statement we defined in the cron is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid an I/O increase which could make the SSL renewal fail.
 
-## Specific Mattermost configuration
-
-* `System Console` > `Integrations` > `GIF (Beta)` > `Enable GIF Picker`: `true`
-* `System Console` > `Site Configuration` > `Posts` > `Enable Link Previews`: `true`
-* `System Console` > `Environment` > `SMTP` > configure all the needed fields.
-
-## Plugins to consider
-
-* [Autolink](https://github.com/mattermost/mattermost-plugin-autolink#configuration-management)
-* [Collabora Mattermost](https://www.collaboraoffice.com/integrations/mattermost-plugin/)
