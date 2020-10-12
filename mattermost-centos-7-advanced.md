@@ -4,7 +4,7 @@ This section is only valid if you have followed the [standard installation of Ma
 
 ## TLS 1.3 support and perfect SSL labs test
 
-CentOS 7 has an outdated version of OpenSSL. In order to get support for TLS 1.3, let's [compile a new version](https://dev.to/bidhanahdib/how-to-enable-tls-1-3-in-nginx-with-openssl-centos-7-4f4b) and relink it to NGINX.
+CentOS 7 has an outdated version of OpenSSL. In order to get support for TLS 1.3, let's compile a new version and relink it to NGINX. [src.](https://dev.to/bidhanahdib/how-to-enable-tls-1-3-in-nginx-with-openssl-centos-7-4f4b)
 
 ### Build a new OpenSSL version
 
@@ -129,7 +129,7 @@ ssl_stapling_verify on;
 [...]
 ```
 
-The RFC 8446 defining the implementation of TLS 1.3 is requiring the cipher TLS_AES_128_GCM_SHA256 in order to be compliant. However that cipher is detected by the SSL Qualys test as being weak because using a 128 bit algorithm. [A fix is on its way](https://github.com/ssllabs/ssllabs-scan/issues/636). In order to bypass this restriction and still get 100%, we will have to ask OpenSSL to not use this cipher, but at [the price of TLS1.3 compliance](https://serverfault.com/a/990952).
+The RFC 8446 defining the implementation of TLS 1.3 is requiring the cipher TLS_AES_128_GCM_SHA256 in order to be compliant. However that cipher is detected by the SSL Qualys test as being weak because using a 128 bit algorithm. A fix is on its way. In order to bypass this restriction and still get 100%, we will have to ask OpenSSL to not use this cipher, but at the price of TLS1.3 compliance. [src.](https://github.com/ssllabs/ssllabs-scan/issues/636) [src.](https://serverfault.com/a/990952)
 
 To know where to change this value we used `strace` against the `nginx` binary:
 ```
@@ -149,7 +149,7 @@ Ciphersuites = TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
 Options = ServerPreference,PrioritizeChaCha
 ```
 
-Pay attention that this specific OpenSSL configuration file is due to the fact we have been using a custom rebuilt NGINX version. For other systems, [your mileage may vary](https://github.com/ssllabs/ssllabs-scan/issues/636#issuecomment-632616034).
+Pay attention that this specific OpenSSL configuration file is due to the fact we have been using a custom rebuilt NGINX version. For other systems, your mileage may vary. [src.](https://github.com/ssllabs/ssllabs-scan/issues/636#issuecomment-632616034) [src.](https://dawnbringer.net/blog/1083/TLS%20All%20The%20Things!%20Perfect%20ssl-labs%20score%20for%20Nginx)
 
 Check the 100% https connection robustness on [SSL Labs](https://www.ssllabs.com/ssltest/), but don't forget to check the following checkbox on the webpage to avoid the website to be promoted to the recently checked section of SSL Labs.
 ```
