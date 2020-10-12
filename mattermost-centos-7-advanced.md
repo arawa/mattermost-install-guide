@@ -1,4 +1,4 @@
-# Mattermost installation on CentOS 7 (advanced options)
+# Installation guide of Mattermost on CentOS 7 (advanced options)
 
 This section is only valid if you have followed the [standard installation of Mattermost on CentOS 7](mattermost-centos-7.md) and concerns advanced and optional nice to have features like TLS 1.3 support.
 
