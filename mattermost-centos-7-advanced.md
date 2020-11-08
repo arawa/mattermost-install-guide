@@ -1,23 +1,39 @@
 # Installation guide of Mattermost on CentOS 7 (advanced options)
 
-This section is only valid if you have followed the [standard installation of Mattermost on CentOS 7](mattermost-centos-7.md) and concerns advanced and optional nice to have features like TLS 1.3 support.
+This section is only valid if you have followed the [standard installation of Mattermost on CentOS 7](mattermost-centos-7.md) and concerns advanced and optional nice to have features (e.g. TLS 1.3 support).
+
 
 ## TLS 1.3 support and perfect SSL labs test
 
 CentOS 7 has an outdated version of OpenSSL. In order to get support for TLS 1.3, let's compile a new version and relink it to NGINX. [src.](https://dev.to/bidhanahdib/how-to-enable-tls-1-3-in-nginx-with-openssl-centos-7-4f4b)
 
-### Build a new OpenSSL version
+While this section is completely working, you have have to keep in mind the two following caveats it brings:
+* We are preventing NGINX and openssl related packages to be upgraded since we are replacing them by our own.
+* The one we have are customly built which means a manual (simple!) compilation step is required each time you want to upgrade NGINX or openssl.
+
+### Preventing updates of NGINX and OpenSSL related packages
+
+Open `/etc/yum.conf` and add at the end the following line:
+```
+exclude=nginx nginx-all-modules nginx-mod-http-image-filter nginx-mod-http-perl nginx-mod-http-xslt-filter nginx-mod-mail nginx-mod-stream openssl
+```
+
+### Building a new OpenSSL version
 
 Build and install a new version of OpenSSL:
 ```
 # cd /usr/src
 # yum install gcc gcc-c++ pcre-devel zlib-devel make unzip gd-devel perl-ExtUtils-Embed libxslt-devel openssl-devel perl-Test-Simple
-# curl -LOC - https://www.openssl.org/source/openssl-1.1.1g.tar.gz
-# tar xvf openssl-1.1.1g.tar.gz
-# cd openssl-1.1.1g/
+# curl -LOC - https://www.openssl.org/source/openssl-1.1.1h.tar.gz
+# tar xvf openssl-1.1.1h.tar.gz
+# mv openssl-1.1.1h openssl
+# cd openssl
 # ./config --prefix=/usr/local/openssl --openssldir=/usr/local/openssl --libdir=/lib64 shared zlib-dynamic
 # make
 # make install
+```
+Only the first time you proceed to the initial installation. For further updates, just ignore these two lines:
+```
 # mv /usr/bin/openssl /usr/bin/openssl-backup 
 # ln -s /usr/local/openssl/bin/openssl /usr/bin/openssl
 ```
@@ -25,7 +41,7 @@ Build and install a new version of OpenSSL:
 Check whether you now have the new version:
 ```
 # openssl version
-OpenSSL 1.1.1g  21 Apr 2020
+OpenSSL 1.1.1h  22 Sep 2020
 ```
 
 Check whether TLS 1.3 support has been properly compiled:
@@ -37,15 +53,15 @@ TLSv1.2
 TLSv1.3
 ```
 
-### Rebuild NGINX
+### Rebuilding NGINX
 
 Even if CentOS comes with NGINX 1.16.1 out of the box and we could recompile that exact same version, why not use the latest version brought by upstream instead?
 
 ```
 # cd /usr/src/
-# curl -LOC - http://nginx.org/download/nginx-1.19.2.tar.gz
-# tar xvf nginx-1.19.2.tar.gz
-# cd nginx-1.19.2/
+# curl -LOC - http://nginx.org/download/nginx-1.19.3.tar.gz
+# tar xvf nginx-1.19.3.tar.gz
+# cd nginx-1.19.3/
 # ./configure --prefix=/usr/share/nginx --sbin-path=/usr/sbin/nginx \
 --modules-path=/usr/lib64/nginx/modules \
 --conf-path=/etc/nginx/nginx.conf \
@@ -94,10 +110,22 @@ Even if CentOS comes with NGINX 1.16.1 out of the box and we could recompile tha
 Check whether you now have the new version:
 ```
 # nginx -V
-nginx version: nginx/1.19.2
+nginx version: nginx/1.19.3
 built by gcc 4.8.5 20150623 (Red Hat 4.8.5-39) (GCC)
-built with OpenSSL 1.1.1g  21 Apr 2020
+built with OpenSSL 1.1.1h  22 Sep 2020
 [...]
+```
+
+### Patching the NGINX systemd service
+
+To avoid a race condition with the PID file with more recent NGINX releases, add this [src.](https://www.cloudinsidr.com/content/heres-fix-nginx-error-failed-read-pid-file-linux/):
+```
+printf "[Service]\nExecStartPost=/bin/sleep 0.1\n" >> /etc/systemd/system/nginx.service.d/override.conf
+```
+
+Note: Notice the existing line in the file which overrides the location of the OpenSSL configuration for NGINX:
+```
+Environment="OPENSSL_CONF=/usr/local/openssl/openssl.cnf"
 ```
 
 ### SSL ciphers
@@ -139,6 +167,8 @@ open("/usr/src/openssl/.openssl/ssl/openssl.cnf", O_RDONLY) = 4
 [...]
 ```
 
+We could have known this location from the `OPENSSL_CONF` override from the systemd service (cf. above).
+
 We now know the exact location of the OpenSSL configuration file. In our case, let's open `/usr/src/openssl/.openssl/ssl/openssl.cnf`, and make sure the end of the file appears like the following. The two last lines will ensure a 256 bit based algorithm will be used.
 ```
 [...]
@@ -159,3 +189,7 @@ Check the 100% https connection robustness on [SSL Labs](https://www.ssllabs.com
 ![Perfect Qualys SSL test on CentOS 7](imgs/mattermost-centos-7-advanced-perfect-qualys-ssl-test.png)
 
 In the future, don't forget to check the values returned by the [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org).
+
+## Updating Mattermost
+
+The update process is not changing much. Just do a `yum update` and if a new OpenSSL version is available, just redo the steps `Building a new OpenSSL version` and `Rebuilding NGINX`.
