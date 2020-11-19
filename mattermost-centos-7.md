@@ -114,62 +114,35 @@ Contrary to more recent versions of CentOS, virtual hosts are configured in `/et
 include /etc/nginx/conf.d/*.conf;
 ```
 
+Create a file `/etc/nginx/letsencrypt.conf` with the following content:
+```
+location ^~ /.well-known/acme-challenge/ {
+  allow all;
+  root /var/lib/letsencrypt/;
+  default_type "text/plain";
+  try_files $uri =404;
+}
+```
+
 Create a file `/etc/nginx/conf.d/mattermost.conf` with the following content:
 ```
-upstream backend {
-   server [::1]:8065;
-   keepalive 32;
-}
-
-proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=mattermost_cache:10m max_size=3g inactive=120m use_temp_path=off;
-
 server {
-   listen 80;
-   server_name <your_subdomain.example.com>;
+   listen 80 default_server;
+   listen [::]:80;
 
-   location ~ /api/v[0-9]+/(users/)?websocket$ {
-       proxy_set_header Upgrade $http_upgrade;
-       proxy_set_header Connection "upgrade";
-       client_max_body_size 50M;
-       proxy_set_header Host $http_host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-       proxy_set_header X-Frame-Options SAMEORIGIN;
-       proxy_buffers 256 16k;
-       proxy_buffer_size 16k;
-       client_body_timeout 60;
-       send_timeout 300;
-       lingering_timeout 5;
-       proxy_connect_timeout 90;
-       proxy_send_timeout 300;
-       proxy_read_timeout 90s;
-       proxy_pass http://backend;
-   }
+   server_name your_subdomain.example.com;
 
+   # Redirect everything except the let'sencrypt webroot location which must be
+   # HTTP/1 only to avoid this error: "Server is speaking HTTP/2 over HTTP".
+   # cf. https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206
    location / {
-       client_max_body_size 50M;
-       proxy_set_header Connection "";
-       proxy_set_header Host $http_host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-       proxy_set_header X-Frame-Options SAMEORIGIN;
-       proxy_buffers 256 16k;
-       proxy_buffer_size 16k;
-       proxy_read_timeout 600s;
-       proxy_cache mattermost_cache;
-       proxy_cache_revalidate on;
-       proxy_cache_min_uses 2;
-       proxy_cache_use_stale timeout;
-       proxy_cache_lock on;
-       proxy_http_version 1.1;
-       proxy_pass http://backend;
+      return 301 https://$server_name$request_uri;
    }
+   include letsencrypt.conf;
 }
 ```
 
-Start ant enable nginx:
+Start and enable nginx:
 ```
 # systemctl start nginx
 # systemctl enable nginx
@@ -188,11 +161,21 @@ Authorise http and https:
 # firewall-cmd --zone=public --permanent --add-service=http --add-service=https
 ```
 
-Check if Mattermost is reachable from the outside using your web browser:
+From your own computer, check if the NGINX config is working properly. The root of your domain and any random location like `/blablabla` should redirect you, except `http://your_subdomain.example.com/.well-known/acme-challenge/`:
 ```
-http://your_subdomain.example.com
-```
+$ curl -IL http://your_subdomain.example.com/blablabla
+HTTP/1.1 301 Moved Permanently
+[...]
+Location: https://your_subdomain.example.com
 
+HTTP/2 200
+[...]
+```
+```
+$ curl -IL http://chat.arawa.fr/.well-known/acme-challenge/
+HTTP/1.1 404 Not Found
+[...]
+```
 
 ### Enable https
 
