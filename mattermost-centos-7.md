@@ -201,31 +201,28 @@ Install certbot and the nginx plugin for certbot
 # yum install certbot certbot-nginx
 ```
 
+Due to [this certbot bug](https://github.com/certbot/certbot/issues/3646), we are not able to use `certbot renew` to adapt the NGINX configuration and restart the NGINX server automatically, therefore we need to perform a semi manual installation of the certificate.
+
+Also, NGINX [is not able to perform a HTTP/1.1 -> HTTP/2 h2c protocol upgrade](https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206/5), trerefore, Boundler, the server used by let'sencrypt to perform the challenge exchange, can only assume the server speaks HTTP/1.1 and complains with the error: "Server is speaking HTTP/2 over HTTP". To avoid this let's create a HTTP/1.1 only server before doing the redirection.
+
+The email address specified is only used to send reminders in the event the certificate is expiring soon.
+
 In order to avoid rate limits, let's do a test first (materialized by the `--dry-run` parameter).
 ```
-# certbot --nginx certonly --dry-run
+# certbot certonly --nginx --dry-run --non-interactive -d your_subdomain.example.com --post-hook "systemctl reload nginx" --email tech@arawa.fr --agree-tos
 ```
 
-Cerbot should detect your subdomain automatically and ask you to specify an email address where to send reminders in the event the certificate is expiring soon:
 ```
 Saving debug log to /var/log/letsencrypt/letsencrypt.log
 Plugins selected: Authenticator nginx, Installer nginx
-Starting new HTTPS connection (1): acme-staging-v02.api.letsencrypt.org
-
-Which names would you like to activate HTTPS for?
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-1: your_subdomain.example.com
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Select the appropriate numbers separated by commas and/or spaces, or leave input
-blank to select all options shown (Enter 'c' to cancel):
-```
-If everything works smoothly, repeat that step without the `--dry-run` parameter. If you receive an output similar to the following, this means the certificate has been flawlessly issued:
-```
+Starting new HTTPS connection (1): acme-v02.api.letsencrypt.org
+Cert is due for renewal, auto-renewing...
 Renewing an existing certificate
 Performing the following challenges:
 http-01 challenge for your_subdomain.example.com
 Waiting for verification...
 Cleaning up challenges
+Running post-hook command: systemctl reload nginx
 
 IMPORTANT NOTES:
  - Congratulations! Your certificate and chain have been saved at:
@@ -253,10 +250,18 @@ proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=mattermost_cache:10m max_
 
 
 server {
-   listen 80 http2 default_server;
-   listen [::]:80 http2;
+   listen 80 default_server;
+   listen [::]:80;
+
    server_name your_subdomain.example.com;
-   return 301 https://$server_name$request_uri;
+
+   # Redirect everything except the let'sencrypt webroot location which must be
+   # HTTP/1 only to avoid this error: "Server is speaking HTTP/2 over HTTP".
+   # cf. https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206
+   location / {
+      return 301 https://$server_name$request_uri;
+   }
+   include letsencrypt.conf;
 }
 
 server {
@@ -266,11 +271,17 @@ server {
 
    ssl_certificate /etc/letsencrypt/live/your_subdomain.example.com/fullchain.pem;
    ssl_certificate_key /etc/letsencrypt/live/your_subdomain.example.com/privkey.pem;
-   ssl_session_timeout 1d;
-   ssl_protocols TLSv1.2;
-   ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256';
+
+   ssl_protocols TLSv1.2 TLSv1.3;
+   ssl_ciphers TLS13-AES-256-GCM-SHA384:TLS13-CHACHA20-POLY1305-SHA256:TLS_AES_256_GCM_SHA384:TLS-AES-256-GCM-SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS-CHACHA20-POLY1305-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA;
    ssl_prefer_server_ciphers on;
+   # We don't need a pre-master Diffie-Hellman since we are not using DH based
+   # ciphers.
+   # Generated with: openssl dhparam -out ./dh4096.pem 4096
+   #ssl_dhparam /etc/nginx/ssl/dh4096.pem;
+   ssl_ecdh_curve secp521r1:secp384r1;
    ssl_session_cache shared:SSL:50m;
+   ssl_session_timeout 1d;
    # HSTS (ngx_http_headers_module is required) (15768000 seconds = 6 months)
    add_header Strict-Transport-Security max-age=15768000;
    # OCSP Stapling ---
@@ -344,8 +355,9 @@ Check the https connection robustness on [SSL Labs](https://www.ssllabs.com/sslt
 Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-secure-apache-with-let-s-encrypt-on-centos-7#step-4-%E2%80%94-setting-up-auto-renewal) of the certificate using a crontab:
 ```
 # crontab -e
-0 0,12 * * * python -c 'import random; import time; time.sleep(random.random() * 3600)' && certbot renew
+0 0,12 * * * python -c 'import random; import time; time.sleep(random.random() * 3600)' && certbot renew"
 ```
 
-Note: The random statement we defined in the cron is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid an I/O increase which could make the SSL renewal fail.
+Note 1: The random statement we defined in the cron is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid an I/O increase which could make the SSL renewal fail.
 
+Note 2: Due to the initial `certbot` invokation we performed, all the previous parameters (webroot, email, authentication method, and post hook to reload NGINX) have been saved in the directory `/etc/letsencrypt/renewal` and Letsencrypt is just replaying them when needed, no need to respecify in the cron.
