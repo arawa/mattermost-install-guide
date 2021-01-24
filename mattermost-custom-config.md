@@ -7,10 +7,13 @@
 * Enabling the ability to [upload plugins](https://docs.mattermost.com/administration/plugins.html#custom-plugins) via the system console by changing the value of the key `EnableUploads` to `true` in the file `/etc/mattermost/config.json`
 * `System Console` > `Integrations` > `GIF (Beta)` > `Enable GIF Picker`: `true`
 * `System Console` > `Site Configuration` > `Posts` > `Enable Link Previews`: `true`
-* `System Console` > `Environment` > `SMTP` > configure all the needed fields
+* `System Console` > `Site Configuration` > `Posts` > `Enable Latex Rendering`: `true`
 * `System Console` > `Site Configuration` > `Users and Teams` > `Teammate Name Display`: `Show first and last name`.
+* `System Console` > `Environment` > `SMTP` > configure all the needed fields (ideally use a "do not reply" email address).
+* `System Console` > `Site Configuration` > `Notifications` > `Notification Display Name`: `Arawa Chat`
+* `System Console` > `Site Configuration` > `Notifications` > `Notification From Address`, specify the "do not reply" address you defined in the SMTP section above, otherwize the From header field in the email will be empty meaning the email won't be authenticated and the DKIM signature verification will fail.
 
-  However, if your users haven't specified their first and last name you'll have to specify them manually. Use a simple SQL script to do it, and match on the username you know.
+* If your users haven't specified their first and last name you'll have to specify them manually. Use a simple SQL script to do it, and match on the username you know.
 
   ```
   MariaDB [(none)]> use mattermostdb;
