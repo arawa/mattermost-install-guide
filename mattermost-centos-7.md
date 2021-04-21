@@ -132,7 +132,7 @@ server {
 
    server_name your_subdomain.example.com;
 
-   # Redirect everything except the let'sencrypt webroot location which must be
+   # Redirect everything except the Let's Encrypt webroot location which must be
    # HTTP/1 only to avoid this error: "Server is speaking HTTP/2 over HTTP".
    # cf. https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206
    location / {
@@ -186,11 +186,16 @@ Install certbot and the nginx plugin for certbot
 
 Due to [this certbot bug](https://github.com/certbot/certbot/issues/3646), we are not able to use `certbot renew` to adapt the NGINX configuration and restart the NGINX server automatically, therefore we need to perform a semi manual installation of the certificate.
 
-Also, NGINX [is not able to perform a HTTP/1.1 -> HTTP/2 h2c protocol upgrade](https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206/5), trerefore, Boundler, the server used by let'sencrypt to perform the challenge exchange, can only assume the server speaks HTTP/1.1 and complains with the error: "Server is speaking HTTP/2 over HTTP". To avoid this let's create a HTTP/1.1 only server before doing the redirection.
+Also, NGINX [is not able to perform a HTTP/1.1 -> HTTP/2 h2c protocol upgrade](https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206/5), therefore, Boundler, the server used by Let's Encrypt to perform the challenge exchange, can only assume the server speaks HTTP/1.1 and complains with the error: "Server is speaking HTTP/2 over HTTP". To avoid this let's create a HTTP/1.1 only server before doing the redirection.
 
 The email address specified is only used to send reminders in the event the certificate is expiring soon.
 
 In order to avoid rate limits, let's do a test first (materialized by the `--dry-run` parameter).
+
+In `/etc/letsencrypt/cli.ini`, add the following statement to force the generation of 4096 bits keys. Specifing this setting in that file avoids to specify it again manually in the command line or in the `certbot renew` statements below. This setting can also be specified for a specific host in `/etc/letsencrypt/renewal/` [src.](https://certbot.eff.org/docs/using.html#modifying-the-renewal-configuration-file)
+```
+rsa-key-size = 4096
+```
 ```
 # certbot certonly --nginx --dry-run --non-interactive -d your_subdomain.example.com --post-hook "systemctl reload nginx" --email tech@arawa.fr --agree-tos
 ```
@@ -238,7 +243,7 @@ server {
 
    server_name your_subdomain.example.com;
 
-   # Redirect everything except the let'sencrypt webroot location which must be
+   # Redirect everything except the Let's Encrypt webroot location which must be
    # HTTP/1 only to avoid this error: "Server is speaking HTTP/2 over HTTP".
    # cf. https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206
    location / {
@@ -335,12 +340,45 @@ Check the https connection robustness on [SSL Labs](https://www.ssllabs.com/sslt
 [x] Do not show the results on the boards
 ```
 
-Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-secure-apache-with-let-s-encrypt-on-centos-7#step-4-%E2%80%94-setting-up-auto-renewal) of the certificate using a crontab:
+Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-secure-apache-with-let-s-encrypt-on-centos-7#step-4-%E2%80%94-setting-up-auto-renewal) of the certificate using systemd timer.
+
+Create a systemd service:
 ```
-# crontab -e
-0 0,12 * * * python -c 'import random; import time; time.sleep(random.random() * 3600)' && certbot renew"
+[Unit]
+Description=Certbot Renewal
+
+[Service]
+ExecStart=/usr/bin/certbot renew
 ```
 
-Note 1: The random statement we defined in the cron is to avoid the task from running at exactly midday or midnight. Quite useful when the cloud provider is doing backups, to avoid an I/O increase which could make the SSL renewal fail.
+Create the corresponding systemd timer:
+```
+[Unit]
+Description=Timer for Certbot Renewal
 
-Note 2: Due to the initial `certbot` invokation we performed, all the previous parameters (webroot, email, authentication method, and post hook to reload NGINX) have been saved in the directory `/etc/letsencrypt/renewal` and Letsencrypt is just replaying them when needed, no need to respecify in the cron.
+[Timer]
+OnCalendar=daily
+AccuracySec=12h
+
+[Install]
+WantedBy=timers.target
+```
+
+Note 1: With `AccuracySec`, the cron is scheduled to run between a time window starting with 00:00 (`daily` keyword) and ending with the configured `AccuracySec` keyword, here `12h`. The expiration time will be chosen randomly in a 12h window time frame, which means certbot will run twice a day at random time. This is quite useful when the cloud provider is performing backups, to avoid an I/O increase which could make the SSL renewal fail.
+
+Note 2: Due to the initial `certbot` invokation we performed above, all the previous parameters (webroot, email, authentication method, and post hook to reload NGINX) have been saved in the directory `/etc/letsencrypt/renewal` and Letsencrypt is just replaying them when needed, no need to respecify in the cron.
+
+Enable and start the timer:
+```
+# systemctl enable certbot-renewal.timer
+# systemctl start certbot-renewal.timer
+```
+
+You can chek later if the timer has completed successfully or not with:
+```
+# systemctl list-timers
+NEXT                          LEFT     LAST                          PASSED    UNIT                         ACTIVATES
+[...]
+Fri 2021-04-23 00:00:00 CEST  22h left n/a                           n/a       certbot-renewal.timer        certbot-renewal.service
+[...]
+```
