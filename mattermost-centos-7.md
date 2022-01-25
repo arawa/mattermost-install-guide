@@ -6,6 +6,11 @@ This guide aims to bring an installation as stable as possible with some comprom
 
 ## Installation
 
+At Arawa, servers are provisioned using Ansible aand are populated with `firewalld`. To start clean, you can disable it for now:
+```
+# systemctl stop firewalld
+```
+
 First thing first, let's add the Extra Packages for Enterprise Linux repo:
 ```
 # yum -y install epel-release
@@ -23,6 +28,11 @@ We will be using adding [a well maintained community maintained Mattermost repos
 Just confirm the install process:
 ```
 # yum -y install https://harbottle.gitlab.io/harbottle-main/7/x86_64/harbottle-main-release.rpm
+```
+
+Install Mattermost from the repo:
+```
+# yum -y install mattermost mmctl
 ```
 
 ## Database setup
@@ -62,23 +72,35 @@ Ensure the MariaDB server is running at boot:
 
 The Mattermost configuration happens in the file `/etc/mattermost/config.json`.
 
-Let's specify the correct `DriverName` and `DataSource` .
+Let's specify the correct `DriverName` and `DataSource`:
 ```
 [...]
 "SqlSettings": {
     "DriverName": "mysql",
-    "DataSource": "<database_username>:<database_password>@tcp(localhost:3306)/<database_name>?charset=utf8mb4,utf8\u0026readTimeout=30s\u0026writeTimeout=30s",
+    "DataSource": "mmuser:mmuser_password@tcp(localhost:3306)/mattermostdb?charset=utf8mb4,utf8",
 [...]
 ```
 
 Let's change the default language to French:
-
 ```
 [...]
 "LocalizationSettings": {
     "DefaultServerLocale": "fr",
     "DefaultClientLocale": "fr",
     "AvailableLocales": ""
+},
+[...]
+```
+
+If your are deploying a Mattermost for testing urpose, you may be interested in lowering the password complexity:
+```
+[...]
+"PasswordSettings": {
+    "MinimumLength": 5,
+    "Lowercase": true,
+    "Number": true,
+    "Uppercase": true,
+    "Symbol": true
 },
 [...]
 ```
@@ -148,19 +170,6 @@ Start and enable nginx:
 # systemctl enable nginx
 ```
 
-Please make sure you are aware of the [firewalld basic concepts](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-firewall-using-firewalld-on-centos-7#basic-concepts-in-firewalld) first.
-
-Check the zone which is currently defined and adapt the command hereafter accordingly:
-```
-# firewall-cmd --get-default-zone
-public
-```
-
-Authorise http and https:
-```
-# firewall-cmd --zone=public --permanent --add-service=http --add-service=https
-```
-
 From your own computer, check if the NGINX config is working properly. The root of your domain and any random location like `/blablabla` should redirect you, except `http://your_subdomain.example.com/.well-known/acme-challenge/`:
 ```
 $ curl -IL http://your_subdomain.example.com/blablabla
@@ -177,6 +186,12 @@ HTTP/1.1 404 Not Found
 [...]
 ```
 
+If this works, you can make these changes permanent:
+Authorise http and https:
+```
+# firewall-cmd --zone=public --permanent --add-service=http --add-service=https
+```
+
 ### Enable https
 
 Install certbot and the nginx plugin for certbot
@@ -186,7 +201,7 @@ Install certbot and the nginx plugin for certbot
 
 Due to [this certbot bug](https://github.com/certbot/certbot/issues/3646), we are not able to use `certbot renew` to adapt the NGINX configuration and restart the NGINX server automatically, therefore we need to perform a semi manual installation of the certificate.
 
-Also, NGINX [is not able to perform a HTTP/1.1 -> HTTP/2 h2c protocol upgrade](https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206/5), therefore, Boundler, the server used by Let's Encrypt to perform the challenge exchange, can only assume the server speaks HTTP/1.1 and complains with the error: "Server is speaking HTTP/2 over HTTP". To avoid this let's create a HTTP/1.1 only server before doing the redirection.
+Also, NGINX [is not able to perform a HTTP/1.1 -> HTTP/2 h2c protocol upgrade](https://community.letsencrypt.org/t/certbot-nginx-method-fails-server-is-speaking-http-2-over-http/99206/5), therefore, Boundler, the server used by Let's Encrypt to perform the challenge exchange, can only assume the server speaks HTTP/1.1 and complains with the error: "Server is speaking HTTP/2 over HTTP". To avoid this, let's create a HTTP/1.1 only server before doing the redirection.
 
 The email address specified is only used to send reminders in the event the certificate is expiring soon.
 
@@ -197,7 +212,7 @@ In `/etc/letsencrypt/cli.ini`, add the following statement to force the generati
 rsa-key-size = 4096
 ```
 ```
-# certbot certonly --nginx --dry-run --non-interactive -d your_subdomain.example.com --post-hook "systemctl reload nginx" --email tech@arawa.fr --agree-tos
+# certbot certonly --nginx --dry-run --non-interactive -d your_subdomain.example.com --post-hook "systemctl reload nginx" --email your-email@example.com --agree-tos
 ```
 
 ```
@@ -235,7 +250,6 @@ upstream backend {
 }
 
 proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=mattermost_cache:10m max_size=3g inactive=120m use_temp_path=off;
-
 
 server {
    listen 80 default_server;
@@ -340,9 +354,14 @@ Check the https connection robustness on [SSL Labs](https://www.ssllabs.com/sslt
 [x] Do not show the results on the boards
 ```
 
+## Certificate auto renewal
+
 Setup [auto renewal](https://www.digitalocean.com/community/tutorials/how-to-secure-apache-with-let-s-encrypt-on-centos-7#step-4-%E2%80%94-setting-up-auto-renewal) of the certificate using systemd timer.
 
 Create a systemd service:
+```
+/etc/systemd/system/certbot-renewal.service
+```
 ```
 [Unit]
 Description=Certbot Renewal
@@ -352,6 +371,9 @@ ExecStart=/usr/bin/certbot renew
 ```
 
 Create the corresponding systemd timer:
+```
+/etc/systemd/system/certbot-renewal.timer
+```
 ```
 [Unit]
 Description=Timer for Certbot Renewal
@@ -381,4 +403,25 @@ NEXT                          LEFT     LAST                          PASSED    U
 [...]
 Fri 2021-04-23 00:00:00 CEST  22h left n/a                           n/a       certbot-renewal.timer        certbot-renewal.service
 [...]
+```
+
+## Firewalling
+
+Please make sure you are aware of the [firewalld basic concepts](https://www.digitalocean.com/community/tutorials/how-to-set-up-a-firewall-using-firewalld-on-centos-7#basic-concepts-in-firewalld) first.
+
+Start and enable the `firewalld` service as the latter is not enabled by default:
+```
+# systemctl start firewalld
+# systemctl enable firewalld
+```
+
+Check the zone which is currently defined and adapt the command hereafter accordingly:
+```
+# firewall-cmd --get-default-zone
+public
+```
+
+Authorise http and https:
+```
+# firewall-cmd --zone=public --add-service=http --add-service=https
 ```
