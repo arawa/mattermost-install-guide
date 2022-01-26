@@ -20,8 +20,4 @@ Don't hesitate to [contact us](https://www.arawa.fr/contact/).
 
 ## License
 
-Arawa - 2020
-
-William Gathoye - 2020
-
-[CC-BY-SA-4.0](LICENSE)
+[CC-BY-SA-4.0](LICENSE) - Arawa - William Gathoye (wget)
