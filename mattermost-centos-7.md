@@ -105,6 +105,14 @@ If your are deploying a Mattermost for testing purposes, you may be interested i
 [...]
 ```
 
+By default with Mattermost, all API nodes are not enabled by default. With Arawa, as we are often doing tests, it was interesting for us to remove the testing user accounts we create. Indeed, by default, for conformance/compliance reasons, Mattermost only offers the ability to disable accounts, not remove them. Removing them is only possible on the CLI side via `mmctl`. Enabling these API nodes allows this feature.
+```
+"ServiceSettings": {
+[...]
+    "EnableAPIUserDeletion": true,
+[...]
+```
+
 Start and enable the Mattermost service:
 ```
 # systemctl start mattermost
